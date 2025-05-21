@@ -40,7 +40,7 @@ class MCPClient:
         self.session: Optional[ClientSession] = None
         print("✅OpenAI API 客户端初始化完成")
  
-    
+
     async def connect_to_server(self, server_script_paths: List[str]):
         """连接到多个MCP服务器"""
         self.sessions = []
@@ -88,15 +88,10 @@ class MCPClient:
             response = await session.list_tools()
             tools = [tool.name for tool in response.tools]
             print(f"  🛠️ 来自服务 {i+1} 的工具: {tools}")
-    async def process_query(self, query):
-        """
-        使用大模型处理查询并调用多个 MCP 工具 (Function Calling)
-        """
-        messages = [{"role": "system", "content": "你是一个舆情分析助手，当user让你完成今日的舆情分析时，你需要调用wb_crawl_tool工具获取微博舆情数据，然后调用wb_analysis_tool工具进行分析，最后输出wb_analysis_tool返回的舆情简报。"},
-                    {"role": "user", "content": query}]
-        
-        # 合并所有服务端的工具
-        print("✅正在获取所有工具...")
+    async def work(self):
+        """执行工作"""
+        print("✅正在执行工作...")
+        # 例如调用工具、处理数据等
         all_tools = []
         tool_session_map = {}
         for session in self.sessions:
@@ -122,58 +117,15 @@ class MCPClient:
         print(f"✅所有工具获取完成: {all_tools}")
         print(f"✅工具与会话映射: {tool_session_map}")
 
-        # 第一次调用大模型，判断是否调用工具
-        while True:
-            print("✅正在调用大模型...")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=all_tools
-            )
-            print(f"✅大模型调用完成: {response}")
-
-            content = response.choices[0].message
-            print(f"✅大模型返回内容: {content}")
-            if hasattr(content, 'tool_calls') and content.tool_calls:
-                print(f"✅大模型返回工具调用: {content.tool_calls}")
-                tool_call = content.tool_calls[0]
-                function_name = tool_call.function.name
-                function_args = tool_call.function.arguments
-                print(f"✅大模型调用工具: {function_name}，参数: {function_args}")
-                # 找到对应的 session
-                session = tool_session_map.get(function_name)
-                if session is None:
-                    raise ValueError(f"未找到工具 {function_name} 的会话")
-                print(f"✅找到工具 {function_name} 的会话: {session}")
-                result = await session.call_tool(function_name, json.loads(function_args))
-                print(f"✅工具 {function_name} 调用结果: {result}")
-                # 将模型返回的调用哪个工具数据和工具执行完成后的数据都存入messages中
-                result_content = result.content[0].text
-                messages.append(content.message.model_dump())
-                messages.append({
-                    "tool_call_id": tool_call.id,
-                    "role": "tool",
-                    "name": function_name,
-                    "content": result_content,
-                })
-                print(f"✅将工具调用结果添加到消息中: {result_content}")
-
-
-    async def chat_loop(self):
-        """运行交互式聊天循环"""
-        print("✅MCP 客户端已启动！输入 'quit' 退出")
-
-        while True:
-            try:
-                query = input("输入你的问题：").strip()
-                if query.lower() == 'quit':
-                    break
-
-                response = await self.process_query(query)
-                print(f"回答：{response}")
-            except Exception as e:
-                print(f"发生错误：{e}")
-
+        function_name = "wb_crawl_tool"
+        function_args = "{}"
+        session = tool_session_map.get(function_name)
+        print(f"✅正在调用工具 {function_name}，会话: {session}")
+        await session.call_tool(
+            function_name,
+            json.loads(function_args),
+        )
+        print("✅工作完成")
     async def cleanup(self):
         """清理资源"""
         await self.exit_stack.aclose()
@@ -189,10 +141,14 @@ async def main():
     
     try:
         await client.connect_to_server(sys.argv[1:])
-
-        await client.chat_loop()
+        await client.work()
+    except Exception as e:
+        print(f"连接到 MCP 服务器失败: {e}")
+        sys.exit(1)
     finally:
         await client.cleanup()
+        print("✅MCP 客户端已关闭")
+    
 
 if __name__ == "__main__":
     asyncio.run(main())

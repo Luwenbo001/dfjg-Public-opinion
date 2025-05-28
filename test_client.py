@@ -117,14 +117,16 @@ class MCPClient:
         print(f"✅所有工具获取完成: {all_tools}")
         print(f"✅工具与会话映射: {tool_session_map}")
 
-        function_name = "wb_crawl_tool"
+        function_name = "test_tool"
         function_args = "{}"
         session = tool_session_map.get(function_name)
         print(f"✅正在调用工具 {function_name}，会话: {session}")
-        await session.call_tool(
+        response = await session.call_tool(
             function_name,
             json.loads(function_args),
         )
+        print(f"✅调用结果: {response}")
+
         print("✅工作完成")
     async def cleanup(self):
         """清理资源"""

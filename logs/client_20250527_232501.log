@@ -1,0 +1,32 @@
+INFO:     Started server process [5916]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:14078 - "GET /sse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:14080 - "POST /messages/?session_id=5652d95785444a7fad4a9869eeacabd5 HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:14082 - "POST /messages/?session_id=5652d95785444a7fad4a9869eeacabd5 HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:14084 - "POST /messages/?session_id=5652d95785444a7fad4a9869eeacabd5 HTTP/1.1" 202 Accepted
+[05/27/25 23:25:02] INFO     Processing request of type           server.py:534
+                             ListToolsRequest                                  
+INFO:     127.0.0.1:14086 - "POST /messages/?session_id=5652d95785444a7fad4a9869eeacabd5 HTTP/1.1" 202 Accepted
+                    INFO     Processing request of type           server.py:534
+                             ListToolsRequest                                  
+INFO:     127.0.0.1:14088 - "POST /messages/?session_id=5652d95785444a7fad4a9869eeacabd5 HTTP/1.1" 202 Accepted
+                    INFO     Processing request of type           server.py:534
+                             CallToolRequest                                   
+[INFO]正在加载环境变量...
+[INFO]环境变量加载完成
+[INFO]OpenAI API 客户端初始化中...
+[INFO]OpenAI API 客户端初始化完成
+[INFO]正在连接到MCP服务器...
+[INFO]启动服务器脚本: test_server.py，端口: 8000
+[INFO]尝试连接到SSE服务器: http://localhost:8000/sse
+[INFO]连接并初始化成功: test_server.py@8000
+
+已连接到服务器，支持以下工具:
+来自服务 1 的工具: ['test_tool']
+[INFO]正在执行工作...
+[INFO]所有工具获取完成: [{'type': 'function', 'function': {'name': 'test_tool', 'description': '运行爬虫脚本并记录输出', 'parameters': {'properties': {}, 'title': 'test_toolArguments', 'type': 'object'}}}]
+[INFO]调用结果: meta=None content=[TextContent(type='text', text='{\n  "status": "爬虫完成",\n  "log_file": "F:\\\\stock\\\\v0.1\\\\logs\\\\test_server_20250527_232502.log"\n}', annotations=None)] isError=False
+[INFO]工作完成
+[INFO]MCP 客户端已关闭

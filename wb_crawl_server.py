@@ -10,19 +10,19 @@ import sys
 mcp = FastMCP("CrawlServer")
 test_output_file = "test_crawl.txt"
 
-async def read_stream(stream, prefix, log_file):
-    """异步读取流并写入日志文件"""
-    try:
-        while True:
-            line = await stream.readline()
-            if not line:
-                break
-            line_str = line.decode('utf-8').rstrip()
-            with open(log_file, "a", encoding='utf-8') as f:
-                f.write(f"[{prefix}] {line_str}\n")
-    except Exception as e:
-        with open(log_file, "a", encoding='utf-8') as f:
-            f.write(f"[{prefix}] 读取异常: {str(e)}\n")
+# async def read_stream(stream, prefix, log_file):
+#     """异步读取流并写入日志文件"""
+#     try:
+#         while True:
+#             line = await stream.readline()
+#             if not line:
+#                 break
+#             line_str = line.decode('utf-8').rstrip()
+#             with open(log_file, "a", encoding='utf-8') as f:
+#                 f.write(f"[{prefix}] {line_str}\n")
+#     except Exception as e:
+#         with open(log_file, "a", encoding='utf-8') as f:
+#             f.write(f"[{prefix}] 读取异常: {str(e)}\n")
 
 
 async def crawl():
@@ -83,8 +83,8 @@ async def crawl():
         f.write(f"修改变量 {variable_name1} 和 {variable_name2} 的值成功\n")
     
     # 写入修改后的内容
-    with open(file_path, 'w', encoding='utf-8') as file:
-        file.write(new_content)
+    # with open(file_path, 'w', encoding='utf-8') as file:
+    #     file.write(new_content)
     
     with open(test_output_file, "a", encoding='utf-8') as f:
         f.write(f"文件内容写入成功\n")
@@ -94,14 +94,30 @@ async def crawl():
     process = None
     result_csv = os.path.join(pwd, "weibo-search/结果文件/东方精工/东方精工.csv")
     
+    cmd = ["python", "crawl_runner.py"]
+    with open(test_output_file, "a", encoding='utf-8') as f:
+        f.write(f"准备执行命令: {' '.join(cmd)} 在目录 {crawl_dir}\n")
     try:
-        # 使用asyncio.subprocess进行异步调用
-        cmd = [
-            "scrapy", "crawl", "search",
-            "-o", result_csv,
-            "-t", "csv",
-            "-s", "LOG_FILE=scrapy.log"
-        ]
+        process = subprocess.run(
+            cmd,
+            cwd=crawl_dir,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    except Exception as e:
+        with open(test_output_file, "a", encoding='utf-8') as f:
+            f.write(f"爬虫执行失败，异常：{e}\n")
+        return None
+    with open(test_output_file, "a", encoding='utf-8') as f:
+        f.write(f"爬虫进程完成...\n")
+    # try:
+    #     # 使用asyncio.subprocess进行异步调用
+    #     cmd = [
+    #         "scrapy", "crawl", "search",
+    #         # "-o", result_csv,
+    #         # "-t", "csv",
+    #         # "-s", "LOG_FILE=scrapy.log"
+    #     ]
 
         
         # result = subprocess.run(
@@ -134,20 +150,20 @@ async def crawl():
         # with open(test_output_file, "a", encoding='utf-8') as f:
         #     f.write(f"准备执行命令: {' '.join(cmd)} 在目录 {crawl_dir}\n")
             
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=crawl_dir,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        # process = await asyncio.create_subprocess_exec(
+        #     *cmd,
+        #     cwd=crawl_dir,
+        #     stdout=subprocess.DEVNULL,
+        #     stderr=subprocess.DEVNULL,
+        # )
         
         # time.sleep(10)
         
         # **关键1：启动流读取任务并绑定到异步事件循环**
-        stdout_task = asyncio.create_task(read_stream(process.stdout, "STDOUT", test_output_file))
-        stderr_task = asyncio.create_task(read_stream(process.stderr, "STDERR", test_output_file))
-        with open(test_output_file, "a", encoding='utf-8') as f:
-            f.write(f"stdout err获取\n")
+        # stdout_task = asyncio.create_task(read_stream(process.stdout, "STDOUT", test_output_file))
+        # stderr_task = asyncio.create_task(read_stream(process.stderr, "STDERR", test_output_file))
+        # with open(test_output_file, "a", encoding='utf-8') as f:
+        #     f.write(f"stdout err获取\n")
         # **关键2：阻塞等待子进程完成（必须用await）**
         
         # with open(test_output_file, "a", encoding='utf-8') as f:
@@ -160,35 +176,35 @@ async def crawl():
         # with open(test_output_file, "a", encoding='utf-8') as f:
         #     f.write(f"爬虫进程已启动，PID: {process.pid}\n")
         # await asyncio.gather(stdout_task, stderr_task)
-        try:
+        # try:
             # 3 个任务：读 stdout、读 stderr、等进程退出，一起并行，最迟 60 秒
-            await asyncio.wait_for(
-                asyncio.gather(
-                    stdout_task,
-                    stderr_task,
-                    process.wait()
-                ),
-                timeout=20
-            )
-        except asyncio.TimeoutError:
-            # 超时，强杀子进程
-            process.kill()
-            await process.wait()
-            with open(test_output_file, "a", encoding="utf-8") as f:
-                f.write("⚠️ 爬虫执行超时，子进程已被强制终止\n")
-        with open(test_output_file, "a", encoding='utf-8') as f:
-            f.write(f"爬虫进程已启动，PID: {process.pid}\n")
-            f.write(f"stdout_task: {stdout_task}\n")
-            f.write(f"stderr_task: {stderr_task}\n")
-        # 等待进程完成
-        returncode = await process.wait()
-        with open(test_output_file, "a", encoding='utf-8') as f:
-            f.write(f"爬虫进程完成，返回码: {returncode}\n")
+        #     await asyncio.wait_for(
+        #         asyncio.gather(
+        #             stdout_task,
+        #             stderr_task,
+        #             process.wait()
+        #         ),
+        #         timeout=60
+        #     )
+        # except asyncio.TimeoutError:
+        #     # 超时，强杀子进程
+        #     process.kill()
+        #     await process.wait()
+        #     with open(test_output_file, "a", encoding="utf-8") as f:
+        #         f.write("⚠️ 爬虫执行超时，子进程已被强制终止\n")
+        # with open(test_output_file, "a", encoding='utf-8') as f:
+        #     f.write(f"爬虫进程已启动，PID: {process.pid}\n")
+        #     f.write(f"stdout_task: {stdout_task}\n")
+        #     f.write(f"stderr_task: {stderr_task}\n")
+        # # 等待进程完成
+        # returncode = await process.wait()
+        # with open(test_output_file, "a", encoding='utf-8') as f:
+        #     f.write(f"爬虫进程完成，返回码: {returncode}\n")
         
         # 确保所有输出都已读取完毕
         
-    except Exception as e:
-        raise
+    # except Exception as e:
+    #     raise
     #     # 异步读取标准输出和错误输出
     #     stdout_task = asyncio.create_task(read_stream(process.stdout, "STDOUT", test_output_file))
     #     stderr_task = asyncio.create_task(read_stream(process.stderr, "STDERR", test_output_file))
@@ -295,6 +311,7 @@ async def wb_crawl_tool():
 if __name__ == "__main__":
     print("CrawlServer 启动中...")
     
+    # asyncio.run(crawl())
     try:
         mcp.run(transport="stdio")
     except KeyboardInterrupt:

@@ -1,0 +1,22 @@
+INFO:     Started server process [47332]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:3416 - "GET /sse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3418 - "POST /messages/?session_id=d858bf87450443aa958cbcb966b50cc7 HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:3420 - "POST /messages/?session_id=d858bf87450443aa958cbcb966b50cc7 HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:3422 - "POST /messages/?session_id=d858bf87450443aa958cbcb966b50cc7 HTTP/1.1" 202 Accepted
+[05/27/25 22:22:49] INFO     Processing request of type           server.py:534
+                             ListToolsRequest                                  
+[INFO]正在加载环境变量...
+[INFO]环境变量加载完成
+[INFO]OpenAI API 客户端初始化中...
+[INFO]OpenAI API 客户端初始化完成
+[INFO]正在连接到MCP服务器...
+[INFO]启动服务器脚本: test_server.py，端口: 8000
+[INFO]尝试连接到SSE服务器: http://localhost:8000/sse
+[INFO]连接并初始化成功: test_server.py@8000
+
+已连接到服务器，支持以下工具:
+连接到 MCP 服务器失败: 'gbk' codec can't encode character '\U0001f6e0' in position 2: illegal multibyte sequence
+[INFO]MCP 客户端已关闭

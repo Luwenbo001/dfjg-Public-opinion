@@ -3,112 +3,96 @@ import json
 import os
 import sys
 from contextlib import AsyncExitStack
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from dotenv import load_dotenv
-from mcp import ClientSession, StdioServerParameters, stdio_client
+from mcp import ClientSession
+from mcp.client.sse import sse_client
 from openai import OpenAI
+from datetime import datetime
 
-sys.stdout.reconfigure(encoding='utf-8')
-os.environ['PYTHONIOENCODING'] = 'utf-8'
+log_dir = os.path.join(os.getcwd(), "logs")
+os.makedirs(log_dir, exist_ok=True)
+log_file_path = os.path.join(log_dir, f"client_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+log_file = open(log_file_path, 'w', encoding='utf-8')
+sys.stdout = log_file
+sys.stderr = log_file
 
 load_dotenv()
 
-api_key=os.getenv("QWEN_API_KEY")
-base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
-model="qwen-plus"
+api_key = os.getenv("QWEN_API_KEY")
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+model = "qwen-plus"
+
+
+def print_to_terminal(message):
+    original_stdout = sys.stdout  # 保存当前的标准输出
+    sys.stdout = sys.__stdout__    # 恢复原始的标准输出
+    print(message)                 # 输出到终端
+    sys.stdout = log_file          # 恢复到日志文件输出
 
 class MCPClient:
     def __init__(self):
         """初始化MCP客户端"""
-        print("✅正在加载环境变量...")
+        print("[INFO]正在加载环境变量...")
         self.exit_stack = AsyncExitStack()
         self.openai_api_key = api_key
         self.base_url = base_url
         self.model = model
-        print(self.model)
-        print("✅环境变量加载完成")
+        print("[INFO]环境变量加载完成")
         if not self.openai_api_key:
-            raise ValueError("❌未找到OpenAI API Key，请在.env文件中设置OPENAI_API_KEY")
+            raise ValueError("[ERR]未找到OpenAI API Key，请在.env文件中设置OPENAI_API_KEY")
 
-        # self.client = OpenAI(api_key=self.openai_api_key, base_url=self.base_url)
+        print("[INFO]OpenAI API 客户端初始化中...")
         self.client = OpenAI(
-            api_key=os.getenv("QWEN_API_KEY"),
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key=self.openai_api_key,
+            base_url=self.base_url,
         )
-        print("✅OpenAI API 客户端初始化中...")
-        self.session: Optional[ClientSession] = None
-        print("✅OpenAI API 客户端初始化完成")
- 
-    
-    async def connect_to_server(self, server_script_paths: List[str]):
-        """连接到多个MCP服务器"""
-        self.sessions = []
-        self.stdio_servers = []
-        self.write_functions = []
-        
-        print("✅正在连接到MCP服务器...")
+        self.sessions: List[ClientSession] = []
+        print("[INFO]OpenAI API 客户端初始化完成")
 
-        for script_path in server_script_paths:
-            is_python = script_path.endswith('.py')
-            is_js = script_path.endswith('.js')
-            if not is_python and not is_js:
-                raise ValueError(f"❌不支持的脚本类型: {script_path}，请使用Python或JavaScript脚本")
+    async def connect_to_server(self, server_configs: List[Tuple[str, str]]):
+        """连接到多个SSE MCP服务器并启动对应脚本"""
+        print("[INFO]正在连接到MCP服务器...")
 
-            command = "python" if is_python else "node"
-            server_params = StdioServerParameters(
-                command=command,
-                args=[script_path],
-                env=None,
+        for script_path, port in server_configs:
+            if not script_path.endswith(".py"):
+                raise ValueError(f"[ERR]不支持的脚本类型: {script_path}，请使用Python脚本")
+
+            print(f"[INFO]启动服务器脚本: {script_path}，端口: {port}")
+            process = await asyncio.create_subprocess_exec(
+                sys.executable, script_path, port,
+                stdout=log_file,
+                stderr=log_file
             )
+            await asyncio.sleep(1)
 
-            # 启动 MCP 服务器并建立通信
-            print(f"✅正在连接到MCP服务器: {script_path}...")
-            stdio_transport = await self.exit_stack.enter_async_context(
-                stdio_client(server_params)
-            )
-
-            stdio, write = stdio_transport
-            self.stdio_servers.append(stdio)
-            self.write_functions.append(write)
-            print(f"✅成功连接到MCP服务器: {script_path}")
-
-            # 每个服务端创建自己的会话
-            print(f"✅正在创建会话:...")
-            session = await self.exit_stack.enter_async_context(ClientSession(stdio, write))
-            print(f"session赋值成功: {session}")
+            url = f"http://localhost:{port}/sse"
+            print(f"[INFO]尝试连接到SSE服务器: {url}")
+            streams = await self.exit_stack.enter_async_context(sse_client(url=url))
+            session = await self.exit_stack.enter_async_context(ClientSession(*streams))
             await session.initialize()
-            print(f"✅会话初始化成功: {session}")
             self.sessions.append(session)
-            print(f"✅会话创建成功: {session}")
+            print(f"[INFO]连接并初始化成功: {script_path}@{port}")
 
-        # 打印所有工具
         print("\n已连接到服务器，支持以下工具:")
         for i, session in enumerate(self.sessions):
             response = await session.list_tools()
             tools = [tool.name for tool in response.tools]
-            print(f"  🛠️ 来自服务 {i+1} 的工具: {tools}")
+            print(f"  来自服务 {i+1} 的工具: {tools}")
+
     async def process_query(self, query):
-        """
-        使用大模型处理查询并调用多个 MCP 工具 (Function Calling)
-        """
-        messages = [{"role": "system", "content": "你是一个舆情分析助手，当user让你完成今日的舆情分析时，你需要调用wb_crawl_tool工具获取微博舆情数据，然后调用wb_analysis_tool工具进行分析，最后输出wb_analysis_tool返回的舆情简报。"},
+        """处理用户输入，调用大模型和工具"""
+        messages = [{"role": "system", "content": "你是一个舆情分析助手，当user让你完成今日的舆情分析时，你需要调用start_crawler工具获取微博舆情数据，然后调用wb_analysis_tool工具进行分析，最后输出wb_analysis_tool返回的舆情简报。"},
                     {"role": "user", "content": query}]
-        
-        # 合并所有服务端的工具
-        print("✅正在获取所有工具...")
+
         all_tools = []
         tool_session_map = {}
+
+        print("[INFO]正在收集所有工具...")
         for session in self.sessions:
-            print(f"✅正在获取服务端 {session} 的工具...")
             response = await session.list_tools()
-            print(f"✅服务端 {session} 的工具获取完成: {response}")
-            print(f"✅获取到的工具: {response.tools}")
             for tool in response.tools:
-                print('type(tool.name):', type(tool.name))
-                print('type(tool.description):', type(tool.description))
-                print('type(tool.inputSchema):', type(tool.inputSchema),tool.inputSchema)
-                print('type(tool.inputSchema["properties"]):', type(tool.inputSchema['properties']),tool.inputSchema['properties'])
                 all_tools.append({
                     "type": "function",
                     "function": {
@@ -117,84 +101,96 @@ class MCPClient:
                         "parameters": tool.inputSchema,
                     }
                 })
-                tool_session_map[tool.name] = session  # 记录每个工具属于哪个 session
-                print(f"✅工具 {tool.name} 映射到会话 {session}")
-        print(f"✅所有工具获取完成: {all_tools}")
-        print(f"✅工具与会话映射: {tool_session_map}")
+                tool_session_map[tool.name] = session
+        print(f"[INFO]工具收集完毕: {[tool['function']['name'] for tool in all_tools]}")
 
-        # 第一次调用大模型，判断是否调用工具
+        # 循环处理调用
         while True:
-            print("✅正在调用大模型...")
+            print("[INFO]正在调用大模型...")
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 tools=all_tools
             )
-            print(f"✅大模型调用完成: {response}")
-
+            print(f"[INFO]大模型调用完成，响应: {response}")
             content = response.choices[0].message
-            print(f"✅大模型返回内容: {content}")
+            messages.append(content.model_dump())
+            print(f"[INFO]messages 更新: {messages}")
+            print(f"[INFO]大模型返回: {content}")
+
             if hasattr(content, 'tool_calls') and content.tool_calls:
-                print(f"✅大模型返回工具调用: {content.tool_calls}")
                 tool_call = content.tool_calls[0]
                 function_name = tool_call.function.name
                 function_args = tool_call.function.arguments
-                print(f"✅大模型调用工具: {function_name}，参数: {function_args}")
-                # 找到对应的 session
                 session = tool_session_map.get(function_name)
                 if session is None:
-                    raise ValueError(f"未找到工具 {function_name} 的会话")
-                print(f"✅找到工具 {function_name} 的会话: {session}")
+                    raise ValueError(f"[ERR]未找到工具 {function_name} 的会话")
+
+                print(f"[INFO]调用工具: {function_name} 参数: {function_args}")
                 result = await session.call_tool(function_name, json.loads(function_args))
-                print(f"✅工具 {function_name} 调用结果: {result}")
-                # 将模型返回的调用哪个工具数据和工具执行完成后的数据都存入messages中
-                result_content = result.content[0].text
-                messages.append(content.message.model_dump())
+                
+                # messages.append(content.message.model_dump())
+                print(f"[INFO]result: {result}")
+                print(f"[INFO]工具 {function_name} 返回结果: {result}")
+                if function_name == "wb_analysis_tool":
+                    if result:
+                        json_str = result.content[0].text
+                        data = json.loads(json_str)
+                        print_to_terminal(f"简报生成成功: {data.get('summary')}")
+                        return
+                result_dict = result.content[0].text
+
                 messages.append({
-                    "tool_call_id": tool_call.id,
                     "role": "tool",
                     "name": function_name,
-                    "content": result_content,
+                    "content": json.dumps(result_dict, ensure_ascii=False)
                 })
-                print(f"✅将工具调用结果添加到消息中: {result_content}")
-
-
-    async def chat_loop(self):
-        """运行交互式聊天循环"""
-        print("✅MCP 客户端已启动！输入 'quit' 退出")
-
-        while True:
-            try:
-                query = input("输入你的问题：").strip()
-                if query.lower() == 'quit':
+            else:
+                print(f"[INFO]大模型未调用任何工具，content: {content}")
+                if content:
+                    messages.append({
+                        "role": "assistant",
+                        "content": content
+                    })
+                    continue
+                else:
+                    print("[INFO]大模型没有返回内容，结束循环")
                     break
 
-                response = await self.process_query(query)
-                print(f"回答：{response}")
+    async def chat_loop(self):
+        """交互式聊天循环"""
+        print_to_terminal("欢迎使用MCP客户端！输入你的问题，或输入 'quit' 退出。请输入你的问题：")
+        while True:
+            try:
+                query = input().strip()
+                if query.lower() == "quit":
+                    break
+                await self.process_query(query)
             except Exception as e:
-                print(f"发生错误：{e}")
+                print(f"[ERR]发生异常：{e}")
 
     async def cleanup(self):
         """清理资源"""
         await self.exit_stack.aclose()
 
 async def main():
-    if len(sys.argv) < 2:
-        print("请提供至少一个 MCP 服务器脚本路径作为参数")
+    if len(sys.argv) < 3 or len(sys.argv[1:]) % 2 != 0:
+        print("请按 server.py 端口号 的格式提供参数，例如: python client_sse.py server1.py 8000 server2.py 8001")
         sys.exit(1)
-    
-    print("正在加载环境变量...")
-    client = MCPClient()
-    print("正在连接到 MCP 服务器...")
-    
-    try:
-        await client.connect_to_server(sys.argv[1:])
 
+    script_args = sys.argv[1:]
+    server_configs = [(script_args[i], script_args[i + 1]) for i in range(0, len(script_args), 2)]
+
+    client = MCPClient()
+
+    try:
+        await client.connect_to_server(server_configs)
         await client.chat_loop()
     finally:
         await client.cleanup()
+        print("[INFO]MCP 客户端已关闭")
 
 if __name__ == "__main__":
     asyncio.run(main())
 
-# python client.py weather_server.py wb_crawl_server.py wb_analysis_server.py
+# python client.py crawl_server.py 8000 analysis_server.py 8001
